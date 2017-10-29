@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>マイページ</title>
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="//fonts.googleapis.com/css?family=Dosis:300,400,500,600,700">
+    <link rel="stylesheet" href="stylesheet.css">
+    <link rel="stylesheet" href="responsive.css">
+    
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js"></script>
+    <script type="text/javascript" src="./js/bignumber.min.js"></script>
+    <script type="text/javascript" src="./js/crypto-js.js"></script>
+    <script type="text/javascript" src="./js/utf8.js"></script>
+    <script type="text/javascript" src="./js/web3.min.js"></script>
+
+
+<script>
+//接続するJSON-RPCサーバのIPアドレスおよびポート番号
+var url = "http://160.16.74.71:8545";
+var user_name;
+var web3 = new Web3();
+var provider = new web3.providers.HttpProvider(url);
+web3.setProvider(provider);
+web3.eth.defaultAccount = web3.eth.accounts[0];
+var ABI = [{"constant":false,"inputs":[],"name":"countUp","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"constant":true,"inputs":[],"name":"getCompanyName","outputs":[{"name":"company","type":"bytes32"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"getCounterName","outputs":[{"name":"name","type":"bytes32"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":true,"inputs":[],"name":"getNumberOfCounter","outputs":[{"name":"number","type":"uint32"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"company","type":"bytes32"}],"name":"setCompany","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"},{"inputs":[{"name":"name","type":"bytes32"}],"payable":false,"stateMutability":"nonpayable","type":"constructor"}]
+var masterABI = [{"constant":true,"inputs":[],"name":"getCounterAddressList","outputs":[{"name":"counterAddressList","type":"address[]"}],"payable":false,"stateMutability":"view","type":"function"},{"constant":false,"inputs":[{"name":"name","type":"bytes32"}],"name":"addCounter","outputs":[],"payable":false,"stateMutability":"nonpayable","type":"function"}]
+//接続するContract(CounterMaster)のアドレス
+var master = web3.eth.contract(masterABI).at("0xa5707c2a9b0390f5e7c94fa67a6631debe4f3823");
+var CounterAddressList = master.getCounterAddressList();
+
+//ログイン(アンロック)
+function login() {
+    user_name = $("#userName").val();
+    var password = $("#password").val();
+    var JSONdata = createJSONdata("personal_unlockAccount", [ user_name, password, 3000 ]);
+    
+    executeJsonRpc(url, JSONdata, function success(data) {
+        //ログイン成功
+        if (data.error == null) {
+            console.log("login success!");
+        } else {
+            //ログインエラー
+            console.log("login error");
+        }
+        init();
+    }, function error(data) {
+        //ログインエラー
+        console.log("login error");
+    });
+}
+
+//初期処理
+function init() {
+    web3.eth.defaultAccount = user_name;
+    var table = document.getElementById('list');
+    //JSからクリエイトしたContractのアドレスをコンソールログ
+    console.log(CounterAddressList);
+    for (var i = 0; i < CounterAddressList.length; i++) {
+        // 対象の候補者コントラクトの取得
+        var Counter = web3.eth.contract(ABI).at(CounterAddressList[i]);
+        //### HTML編集 table行の追加、編集 ここから ###
+        var row = table.insertRow();
+        var td = row.insertCell();
+//        var radioButton1 = document.createElement('input');
+//        radioButton1.type = 'radio';
+//        radioButton1.name = 'CounterAddress';
+//        radioButton1.value = CounterAddressList[i];
+//        td.appendChild(radioButton1);
+        td = row.insertCell(0);
+        td.innerHTML = web3.toAscii(Counter.getCounterName());
+//        td = row.insertCell(2);
+//        td.innerHTML = Counter.getNumberOfCounter();
+        //★企業名列追加
+//        td = row.insertCell(3);
+//        var inputText1 = document.createElement('input');
+//        inputText1.type = 'text';
+//        inputText1.placeholder = "企業名を入力";
+//        inputText1.id = "company";
+//        td.appendChild(inputText1);
+        td = row.insertCell(1);
+        td.innerHTML = decodeURI(web3.toAscii(Counter.getCompanyName()));
+        //### HTML編集 table行の追加、編集 ここまで ###
+    }
+}
+
+//更新
+function refresh() {
+    web3.eth.defaultAccount = user_name;
+    //### HTML編集 table行の削除 ここから ###
+    var table = document.getElementById('list');
+    for (var i = CounterAddressList.length; i > 0; i--) {
+        table.deleteRow(i);
+    }
+    //### HTML編集 table行の削除 ここまで ###
+    init();
+}
+
+//カウントアップ
+function countUp() {
+    web3.eth.defaultAccount = user_name;
+    var targetAddress;
+    
+    //ラジオボタンを指定
+    var CounterList = document.getElementsByName("CounterAddress");
+    for (i = 0; i < CounterList.length; i++) {
+        if (CounterList[i].checked) {
+            // 対象の候補者コントラクトアドレスを取得
+            targetAddress = CounterList[i].value;
+        }
+    }
+    // 対象候補者コントラクトを取得
+    var Counter = web3.eth.contract(ABI).at(targetAddress);
+    // 対象候補者に投票
+    console.log(targetAddress);
+    Counter.countUp();
+    //対象者の企業を登録
+    var company = web3.fromAscii(encodeURI($("#company").val()),32);
+    Counter.setCompany(company);
+}
+
+//JSONメッセージ生成
+function createJSONdata(method, params) {
+var JSONdata = {
+    "jsonrpc" : "2.0",
+    "method" : method,
+    "params" : params
+    };
+    return JSONdata;
+}
+
+//JSON-RPC実行
+function executeJsonRpc(url_exec, JSONdata, success, error) {
+    $.ajax({
+        type : 'post',
+        url : url_exec,
+        data : JSON.stringify(JSONdata),
+        contentType : 'application/JSON',
+        dataType : 'JSON',
+        scriptCharset : 'utf-8',
+        success : function(data) {
+            success(data);
+        },
+        error : function(data) {
+            error(data);
+        }
+    });
+}
+    
+</script>
+
+    
+</head>
+<body>
+        <!-- Header -->
+    <header>
+      <div class="container">
+        <div class="header-title">
+          <a class="header-logo" href="index.html">Blockchain Resume</a>
+        </div>
+        <div class="header-menu">
+          <ul class="header-menu-right">
+            <li>
+              <a href="#configuration">設定</a>
+          </ul>
+        </div>
+      </div>
+    </header>
+
+<div class="m-main-section">
+   <div class="m-inner-bg">
+        <div class="container">
+            <p class="hidden">
+            ユーザ名:&nbsp;<input type="text" id="userName" value="0x389d408a2a2cf39bd42aadacf32b3e6ccb9c14aa">&nbsp; パスワード:&nbsp;<input type="text" id="password" value="testuser2" >
+            </p>
+            <div class="m-factor">
+                <img src="http://ribittsworks.com/images/icon_about.svg?crc=3994166445" class="profile-image">
+            </div>
+            <div class="m-btn">
+                <input type="button" value="view" onclick="login();" />
+            </div>
+            <br/>
+<!--テーブル-->
+           <div class="m-table">
+                <table id="list" class="m-table" border="3">
+                <tr>
+                <th class="hide"></th>
+                <th>name</th>
+                <th class="hide">number of counter</th>
+                <th class="hide">input company name</th>
+                <th>company name</th>
+                </tr>
+                </table>
+            </div>
+       </div>
+    </div>
+</div>
+<!--    footer-->
+    <footer>
+      <div class="container">
+        <div class="copyright">©2017-
+          Blockchain Resume
+        </div>
+      </div>
+    </footer>
+
+</body>
+</html>
